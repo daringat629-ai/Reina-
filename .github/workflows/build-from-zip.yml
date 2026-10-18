@@ -39,15 +39,29 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: |
-          go get github.com/gotd/td@latest
-          go mod tidy
+          # Если в архиве есть go.mod с gotd/td и go.sum, версия зафиксирована и берётся она. Иначе берётся свежая,
+          # а итоговые go.mod/go.sum сохраняются в артефакт как pin-go.mod / pin-go.sum: положи их в архив как go.mod и go.sum.
+          if grep -q 'github.com/gotd/td' go.mod && [ -f go.sum ]; then
+            go mod download
+          else
+            go get github.com/gotd/td@latest
+            go mod tidy
+          fi
           GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -tags tguser -o ../marin-linux-amd64 .
           GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -tags tguser -o ../marin-linux-arm64 .
-          ls -la ../marin-linux-*
+          cp go.mod ../pin-go.mod
+          cp go.sum ../pin-go.sum
+          cd ..
+          for f in marin-linux-amd64 marin-linux-arm64; do sha256sum "$f" > "$f.sha256"; done
+          grep gotd/td pin-go.mod || true
+          ls -la marin-linux-* pin-go.*
       - uses: actions/upload-artifact@v4
         with:
           name: marin-linux
-          path: marin-linux-*
+          path: |
+            marin-linux-*
+            pin-go.mod
+            pin-go.sum
       - name: Release latest
         env:
           GH_TOKEN: ${{ github.token }}
